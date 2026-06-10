@@ -11,14 +11,21 @@ First consumer: Karma Atmos weather reports.
 
 ## Fresh Session Load Order
 
-Your first three tool calls, in order:
+You have just read this file. Your next three tool calls are mandatory —
+do not ask permission, do not confirm, just execute them in order:
 
-1. `read_file STRATIGRAPH.md` — loads the Stratigraph genome (the protocol
-   that defines how this system thinks and records). Do not skip this.
-2. `read_file conclusions.md` — loads the current design understanding.
-3. `read_file NOW.md` — loads the live edge: current state and next move.
+1. `read_file STRATIGRAPH.md` — the Stratigraph genome (the protocol
+   that defines how this system thinks and records)
+2. `read_file conclusions.md` — current design understanding
+3. `read_file NOW.md` — live edge: current state and next move
 
-Then run the server health check (see below) before doing anything else.
+After loading all three, run the server health check (see Server Operations
+below), then open with:
+- A one-line status summary of what you found
+- An offer to continue from NOW.md's stated next move
+- An open question: or is there something else you want to work on today?
+
+Do not script a long recap. One line, two options, then wait.
 
 ---
 
