@@ -1,8 +1,7 @@
 # Conclusions — Vitals Station
 
-> The living synthesized read. This covers the design of the Vitals Station
-> itself — decisions made, why, and how understanding evolved. Health data
-> state lives in health-data/ and uses a projection model, not this layer.
+> The living synthesized read. Design decisions and why. Health data state
+> lives in health-data/ and uses a projection model, not this layer.
 
 ---
 
@@ -17,46 +16,40 @@ consumer — starting with Atmos, but agnostic to future applications?
 ## Current Read
 
 The system is **Vitals Station**: an immutable health event log and
-projection engine. It receives JSON from Health Auto Export (iPhone),
-stores raw events immutably, and will rebuild a deduplicated projection
-on every ingest. It records. It does not interpret.
+projection engine. It records. It does not interpret.
 
-**Infrastructure is stable.** Server runs as a systemd user service on
-karma-01 (Tailscale-only, TLS, port 8080). Survives reboots and session
-restarts independently. Three-file architecture (STRATIGRAPH.md /
-README.md / NOW.md) gives fresh sessions full cold-start orientation
-from a single `read README.md` command.
+**Infrastructure is stable.** Systemd user service, TLS, Tailscale-only.
+Three-file session architecture (STRATIGRAPH.md / README.md / NOW.md)
+gives fresh sessions full cold-start orientation.
 
-**Wire format is fully known.** Three distinct data-point shapes exist
-in the real export. The converter must handle all three. Sleep analysis
-and heart rate are special cases. 17 remaining metrics split between
-interval (Shape A: date/start/end/qty/source) and point-in-time
-(Shape D: date/qty/source).
+**Wire format is fully known.** Three data-point shapes. All timestamps
+carry -0600 (MDT). Deterministic parse.
 
-**High-frequency granulation is the next design problem.** Step count
-arrives at 21K+ data points per day. The projection needs aggregation
-strategy before it can be useful. That decision is next.
+**Projection architecture is decided.** Three files, three temporal scales,
+matching Atmos's own micro/meso/macro vocabulary:
+
+- projection-micro.md: Current Read + Today + today's anomalies (default load)
+- projection-meso.md: Yesterday arc + 3-day rolling window
+- projection-macro.md: 7-day rolling window + trend direction
+
+Anomaly detection: pure statistical (>2 std dev from day mean). Timestamped,
+value + deviation recorded. No interpretation.
 
 Key design bets (all standing):
-- Events are immutable. Projection is the mutable read model. Never mixed.
-- Design decisions live here. Computed health state lives in health-data/.
-- Wire format drives schema. Documentation is a hint, not a spec.
-- Tailscale-only exposure. TLS via Let's Encrypt. No public surface.
-- Classical code in the ingestion pipeline. Model reads; does not process.
+- Events immutable. Projections are computed state. Never mixed.
+- Wire format drives schema. Docs are hints.
+- Tailscale-only, TLS, no public surface.
+- Classical code in ingestion pipeline. Model reads; does not process.
 - De-dupe key: (metric_name, date_utc).
-
-Atmos is the first consumer. The projection is agnostic to who reads it.
+- Consumer-agnostic: projection carries measured values only, no labels.
 
 ---
 
 ## Open Threads
 
-- **Aggregation strategy:** daily summary vs. hourly buckets vs. both?
-  Step count / active energy → sum. Heart rate → avg/min/max. Sleep →
-  stage breakdown. Decides when converter is written.
-- **sleep_analysis `value` field:** HKCategoryValue strings need mapping
-  to human-readable stage names.
-- **heart_rate `context` field:** unknown until raw data inspected.
-- **startDate/endDate in sleep_analysis:** may duplicate start/end.
-  Confirm before schema is written.
-- **Projection schema:** what does Atmos need to read cleanly?
+- **Converter:** JSON → health-data/events/ + rebuild all three projections.
+  Next build target.
+- **sleep_analysis `value` field:** HKCategoryValue strings → human stage names.
+- **heart_rate `context` field:** unknown until inspected in converter build.
+- **Anomaly floor:** fixed-range minimum bar deferred until first real output.
+- **Macro rebuild cadence:** daily vs. every-ingest — decide when it matters.
