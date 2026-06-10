@@ -1,55 +1,54 @@
 # NOW — Vitals Station Live Edge
 
-Last updated: 2026-06-10T13:32:00-06:00
-Session: vitals-station bootstrap session (June 10 2026)
+Last updated: 2026-06-10T14:10:00-06:00
+Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
 
-> Update this file anytime state changes. Commit immediately — do not let
-> this file drift from committed state. Even mid-session, commit the update.
+> Update this file anytime state changes. Commit immediately.
 
 ---
 
 ## What's Working
 
-- Server: running as systemd user service on `karma-01.tail3cae5f.ts.net:8080`
-  (TLS, Tailscale-only). Check: `systemctl --user status vitals-station`
-- Converter: auto-runs on every POST — rebuilds all three projections immediately
-- TLS cert: provisioned June 10 2026, Let's Encrypt via Tailscale
-- First test export: received, 9.9MB, 19 metrics, June 9 2026 data
-- Three projections: live on disk at health-data/
-  - projection-micro.md  — Current Read + Today + today's anomalies
-  - projection-meso.md   — Yesterday arc + 3-day rolling
-  - projection-macro.md  — 7-day rolling window
-- Anomaly detection: physiological signals only (ANOMALY_METRICS whitelist)
-  deduped to one per minute, >2σ from day mean
-- Git log: 15 commits, clean history from conception
+- Server: systemd user service, karma-01.tail3cae5f.ts.net:8080, TLS, Tailscale-only
+  Check: `systemctl --user status vitals-station`
+  Logs:  `journalctl --user -u vitals-station -n 50`
+- Full pipeline: POST → inbox/pending → converter → inbox/processed + events + projections
+- 10 exports processed: June 1–10 2026 (10 days of real data)
+- Three live projections in health-data/
+- Seam analysis: 3 real gaps in source data (June 4→5, June 7→8, June 9→10)
+  These are Watch recording gaps, not pipeline losses.
+- Git: 17 commits, clean history from conception
 
 ## Current Projection State (June 10 2026)
 
-Sleep last night (June 9): 8h 53m — Deep 0h49m | REM 2h00m | Core 5h53m | Awake 0h12m
-Resting HR: 67 bpm | HRV: 43.5ms | Blood O2: 94% | Resp Rate: 18.5/min
-Overnight anomalies: SpO2 dip to 91% at 12:40am, resp rate spike 22.5/min at 4:36am
-
-## What's Not Built Yet
-
-- health-data/events/ populated with real ingest events (currently uses raw test exports)
-- Ingest event writer (JSON → health-data/events/YYYYMMDD_ingest-NNN.md)
-- projection-macro.md has only 2 days of data (more exports needed)
-
-## Open Design Questions
-
-- Fixed-range anomaly floor (deferred until more data in hand)
-- Macro rebuild cadence — daily vs. every-ingest (decide when it matters)
-
-## Next Move
-
-Wire up your iPhone automation to send daily exports. After a week of data
-lands, review projection quality and tune anomaly thresholds. Then integrate
-projection-micro.md as a standard read into Atmos weather reports.
-
----
+Sleep last night (June 9): 8h 53m — best night this week
+Resting HR trend: 69→59→74→67→63 bpm (June 8 spike notable)
+Steps range: 710 (today, partial) to 13,601 (June 6)
+Active energy June 5: 28 kcal (anomaly — trailer move day, minimal activity)
 
 ## How to Use in an Atmos Session
 
-1. Load this README.md (triggers genome + conclusions + NOW load)
-2. Then: `read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-micro.md`
-3. Optionally for historical context: projection-meso.md or projection-macro.md
+Load this project first:
+  read_file /home/jeremy/projects/stratigraph/vitals-station/README.md
+
+Then load current vitals:
+  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-micro.md
+
+Optional historical context:
+  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-meso.md
+  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-macro.md
+
+## Daily Automation
+
+Set up Health Auto Export automation:
+  URL:    https://karma-01.tail3cae5f.ts.net:8080/ingest
+  Method: POST
+  Format: JSON
+  Schedule: daily, "since last sync"
+  iPhone must be on Tailscale when it fires.
+
+## Next Move
+
+Nothing urgent. Let daily automation run for a week.
+First Atmos integration: load projection-micro.md at start of a weather report session
+and see how it reads alongside Atmos events.
