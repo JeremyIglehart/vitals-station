@@ -1,3 +1,11 @@
+---
+archived: 2026-06-10
+challenged_by: 6576270 — security: test-exports purged from history, repo recreated
+superseded_by: conclusions.md
+slug_story: repo-recreated-security-fix-complete
+reconstruction_fidelity: live
+---
+
 # Conclusions — Vitals Station
 
 > The living synthesized read. Design decisions and why. Health data state
@@ -15,7 +23,7 @@ consumer — starting with Atmos, but agnostic to future applications?
 
 ## Current Read
 
-**The system is fully operational, public, clean, and integrated.**
+**The system is fully operational, public, and integrated.**
 
 Vitals Station receives Apple Health exports from an iPhone, processes them
 through a pending→processed pipeline, writes immutable event records, rebuilds
@@ -25,8 +33,6 @@ It records. It does not interpret.
 **Infrastructure:** Systemd user service, karma-01, TLS via Tailscale
 Let's Encrypt, port 8080. Survives reboots independently. Directory scaffold
 committed. GitHub public: https://github.com/JeremyIglehart/vitals-station
-(repo was deleted and recreated June 10 2026 — object store is clean, no
-personal health data in any commit or cached blob).
 
 **Pipeline:** inbox/pending → converter → inbox/processed (YAML provenance
 header) + health-data/events/ + three projections rebuilt in ~14 seconds
@@ -37,18 +43,12 @@ header) + health-data/events/ + three projections rebuilt in ~14 seconds
 - projection-meso.md: Yesterday arc + 3-day rolling window
 - projection-macro.md: 7-day rolling window + daily totals
 
-**Atmos integration:** karma-atmos skill step 4 loads projection-micro.md
+**Atmos integration:** karma-atmos skill step 4 now loads projection-micro.md
 automatically at every Atmos session start. First real weather cross-reference
-completed June 10 2026.
+completed June 10 2026 — instrument data contributed to a filed Atmos event.
 
 **Session paper:** docs/vitals-station-stratigraph-session.md
 "Building Something That Knows How It Became Itself" — June 10 2026.
-
-**Privacy posture:** Two filter-repo runs completed. test-exports/ (missed
-in first run) caught by independent audit and purged in second run. Repo
-deleted and recreated to clear GitHub object store. .gitignore covers all
-data paths including test-exports/. Examples use fictional data and
-"Example Apple Watch" as source — no personal name attached.
 
 Key design bets (all holding):
 - Events immutable. Projection is computed state. Never mixed.
@@ -70,14 +70,5 @@ Key design bets (all holding):
 ## Known Pitfalls
 
 - **git filter-repo deletes gitignored directories** from working dir after
-  rewrite. Always commit .keep files first. See:
+  rewrite. Always commit .keep files first. See event:
   20260610_212119_filter-repo-directory-loss-pitfall.md
-
-- **filter-repo path set must cover ALL paths ever committed** — not just
-  current gitignored paths. Orphaned committed paths (e.g. test-exports/
-  created before gitignore existed) require explicit inclusion. Run
-  `git log --all --name-only` to find them. See:
-  20260610_222858_test-exports-missed-in-filter-repo-purge.md
-
-- **conclusions-archive/ must be written BEFORE updating conclusions.md.**
-  Archive-first, always. See STRATIGRAPH.md protocol rule 3.

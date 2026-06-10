@@ -1,6 +1,6 @@
 # NOW — Vitals Station Live Edge
 
-Last updated: 2026-06-10T15:47:57-06:00
+Last updated: 2026-06-10T16:30:00-06:00
 Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
 
 > Update this file anytime state changes. Commit immediately.
@@ -13,18 +13,25 @@ Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
   Check: `systemctl --user status vitals-station`
   Logs:  `journalctl --user -u vitals-station -n 50`
 - Full pipeline: POST → inbox/pending → converter → inbox/processed + events + projections
-- Health data: current — re-uploaded and processed after filter-repo cleanup
+- Health data: current — re-uploaded and processed
 - GitHub: PUBLIC — https://github.com/JeremyIglehart/vitals-station
+  (repo deleted and recreated June 10 2026 — object store clean, no personal data)
 - Atmos integration: LIVE — karma-atmos skill step 4 loads projection-micro.md
   automatically at every Atmos session start
 - First real Atmos weather read using instrument data: filed June 10 2026
 - Session paper in docs/ and ~/mac-shared/stratigraph-papers/
 - Bootstrap genome: https://github.com/JeremyIglehart/stratigraph
-- Git: 31 commits (after this one), clean, all pushed
+- Git: 34 commits, clean, all pushed
+
+## Privacy Status
+
+Clean. Two filter-repo runs completed. test-exports/ (missed in first run,
+caught by independent Opus audit) purged in second run. Repo deleted and
+recreated to clear GitHub object store. All examples use fictional data.
 
 ## How to Use in an Atmos Session
 
-The karma-atmos skill now handles this automatically (step 4).
+The karma-atmos skill handles this automatically (step 4).
 Manual load if needed:
   read_file ~/projects/stratigraph/vitals-station/health-data/projection-micro.md
   read_file ~/projects/stratigraph/vitals-station/health-data/projection-meso.md
