@@ -1,42 +1,43 @@
 #!/usr/bin/env python3
 """
-Vitals Station — Schema Discovery Server
-----------------------------------------
-Schema-discovery mode only. Accepts any JSON POST to /ingest and writes
-the raw payload to test-exports/raw/ with a UTC timestamp + sequence number.
-No parsing, no conversion, no interpretation. That comes after the first
-real export lands and we know what we're working with.
+Vitals Station — Schema Discovery Server (TLS)
+-----------------------------------------------
+Schema-discovery mode. Accepts any JSON POST to /ingest, writes the raw
+payload to test-exports/raw/ with a UTC timestamp + sequence number.
+No parsing, no conversion, no interpretation.
 
-Binds exclusively to the Tailscale interface (100.95.70.33) on port 8080.
-Not accessible from the public internet.
+Binds to the Tailscale hostname on port 8080 with Let's Encrypt TLS
+(provisioned via `tailscale cert`). iOS trusts this automatically.
 
 Endpoints:
-  GET  /health  — liveness check, returns 200 + plain text
+  GET  /health  — liveness check
   POST /ingest  — accepts JSON body, writes raw file, returns 200 + receipt
 """
 
 import http.server
 import json
 import os
+import ssl
 import socketserver
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 # --- Config ---
-HOST = "100.95.70.33"   # Tailscale interface only — never 0.0.0.0
-PORT = 8080
-BASE_DIR = Path(__file__).parent.parent  # vitals-station/
+HOST     = "100.95.70.33"   # Tailscale interface only
+PORT     = 8080
+BASE_DIR = Path(__file__).parent.parent
 RAW_DIR  = BASE_DIR / "test-exports" / "raw"
+CERT_DIR = Path(__file__).parent / "certs"
+CERTFILE = CERT_DIR / "karma-01.tail3cae5f.ts.net.crt"
+KEYFILE  = CERT_DIR / "karma-01.tail3cae5f.ts.net.key"
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _next_filename() -> str:
-    """UTC timestamp + zero-padded sequence so files sort chronologically
-    and multiple exports in the same second don't collide."""
+    """UTC timestamp + zero-padded sequence — never collides, always sorts."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    # Count existing json files to get sequence number
     existing = sorted(RAW_DIR.glob(f"{ts}_*.json"))
     seq = len(existing) + 1
     return f"{ts}_{seq:03d}.json"
@@ -45,7 +46,6 @@ def _next_filename() -> str:
 class VitalsHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        # Cleaner log — timestamp + message only
         ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         print(f"[{ts}] {fmt % args}", flush=True)
 
@@ -63,6 +63,7 @@ class VitalsHandler(http.server.BaseHTTPRequestHandler):
             body = (
                 f"Vitals Station — schema discovery mode\n"
                 f"status: alive\n"
+                f"tls: enabled\n"
                 f"test exports received: {len(raw_files)}\n"
                 f"raw dir: {RAW_DIR}\n"
             )
@@ -75,11 +76,9 @@ class VitalsHandler(http.server.BaseHTTPRequestHandler):
             self._send(404, "not found")
             return
 
-        # Read body
         length = int(self.headers.get("Content-Length", 0))
         raw_body = self.rfile.read(length)
 
-        # Validate it's parseable JSON — but store raw bytes regardless
         try:
             parsed = json.loads(raw_body)
             is_valid_json = True
@@ -89,7 +88,6 @@ class VitalsHandler(http.server.BaseHTTPRequestHandler):
             pretty = raw_body.decode("utf-8", errors="replace")
             print(f"  [warn] body is not valid JSON: {e}", flush=True)
 
-        # Write to disk
         filename = _next_filename()
         dest = RAW_DIR / filename
         dest.write_text(pretty, encoding="utf-8")
@@ -97,7 +95,6 @@ class VitalsHandler(http.server.BaseHTTPRequestHandler):
         size = dest.stat().st_size
         print(f"  wrote {filename} ({size} bytes, valid_json={is_valid_json})", flush=True)
 
-        # Receipt back to caller
         receipt = {
             "status": "received",
             "file": filename,
@@ -112,12 +109,21 @@ class ReusableTCPServer(socketserver.TCPServer):
 
 
 if __name__ == "__main__":
-    print(f"Vitals Station starting on {HOST}:{PORT}", flush=True)
+    if not CERTFILE.exists() or not KEYFILE.exists():
+        print(f"ERROR: certs not found at {CERT_DIR}", flush=True)
+        print("Run: tailscale cert karma-01.tail3cae5f.ts.net", flush=True)
+        sys.exit(1)
+
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certfile=str(CERTFILE), keyfile=str(KEYFILE))
+
+    print(f"Vitals Station starting on {HOST}:{PORT} (TLS)", flush=True)
     print(f"Raw exports → {RAW_DIR}", flush=True)
-    print(f"GET  http://{HOST}:{PORT}/health", flush=True)
-    print(f"POST http://{HOST}:{PORT}/ingest", flush=True)
+    print(f"GET  https://karma-01.tail3cae5f.ts.net:{PORT}/health", flush=True)
+    print(f"POST https://karma-01.tail3cae5f.ts.net:{PORT}/ingest", flush=True)
 
     with ReusableTCPServer((HOST, PORT), VitalsHandler) as srv:
+        srv.socket = context.wrap_socket(srv.socket, server_side=True)
         try:
             srv.serve_forever()
         except KeyboardInterrupt:
