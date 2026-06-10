@@ -55,6 +55,28 @@ slug_story: <one line — why the archive slug is what it is>
 
 **5. The genome is a stratum too.** STRATIGRAPH.md is itself a node. When the design changes, log the design-pressure as events and give the version cut its own conclusion — why it changed, what was failing. Logging strain is not the same as cutting a version; you can record pressure several times before deciding to change anything. That gap is readable, and worth reading.
 
+**6. When to write a genome event.** A genome event is required whenever:
+
+- A real design decision is made — including decisions to defer something.
+  The event captures what was considered, what was chosen or deferred, and why.
+  NOW.md captures *what*. The genome captures *why*. Both are required.
+- Something about the system's environment or data source is discovered that
+  changes how the system should be understood (e.g. wire format surprises,
+  behavioral properties of upstream data sources).
+- A pitfall is encountered and resolved — so the next operator doesn't
+  re-discover it.
+- The genome itself changes (this protocol addition is an example).
+
+A genome event is NOT required for:
+- Routine data ingest (those are data events, not design events)
+- Code changes that implement an already-committed design decision
+- NOW.md updates that don't involve new reasoning
+
+**The test:** if the reasoning behind a decision would be lost without
+writing an event, write the event. If only the outcome matters and the
+reasoning is obvious or already recorded, skip it. When in doubt, write it —
+a short honest event costs nothing; a missing stratum is permanent.
+
 ---
 
 ## Beginning
