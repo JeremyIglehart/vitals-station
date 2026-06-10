@@ -15,43 +15,37 @@ consumer — starting with Atmos, but agnostic to future applications?
 
 ## Current Read
 
-**The system is fully operational and public.** Vitals Station is a live
-health event log and projection engine at github.com/JeremyIglehart/vitals-station.
+**The system is fully operational, public, and integrated.**
 
-**Infrastructure:**
-- Systemd user service on karma-01, TLS via Tailscale Let's Encrypt,
-  port 8080, Tailscale-only. Survives reboots independently.
-- Directory scaffold committed (`.keep` files) — fresh clone is
-  immediately ready to receive data.
-- GitHub: public repo, health data purged from all history via
-  filter-repo. examples/ shows full pipeline with fictional data.
+Vitals Station receives Apple Health exports from an iPhone, processes them
+through a pending→processed pipeline, writes immutable event records, rebuilds
+three projections on every ingest, and notifies Karma B-Side on Telegram.
+It records. It does not interpret.
 
-**Pipeline:**
-- inbox/pending → converter → inbox/processed (YAML provenance header
-  + raw JSON) + health-data/events/ (Markdown event record) + 3
-  projections rebuilt in ~14 seconds (8-day windowed load).
-- Telegram B-Side notification on every ingest complete.
-- Health check: `systemctl --user status vitals-station` and
-  `curl https://karma-01.tail3cae5f.ts.net:8080/health`
+**Infrastructure:** Systemd user service, karma-01, TLS via Tailscale
+Let's Encrypt, port 8080. Survives reboots independently. Directory scaffold
+committed. GitHub public: https://github.com/JeremyIglehart/vitals-station
+
+**Pipeline:** inbox/pending → converter → inbox/processed (YAML provenance
+header) + health-data/events/ + three projections rebuilt in ~14 seconds
+(8-day windowed load). Telegram B-Side notification on every ingest.
 
 **Projections:**
 - projection-micro.md: Current Read + Today + physiological anomalies
 - projection-meso.md: Yesterday arc + 3-day rolling window
 - projection-macro.md: 7-day rolling window + daily totals
-- Anomaly detection: ANOMALY_METRICS whitelist, >2σ, 1 per minute max.
 
-**Data state:** Directories exist on disk. Health exports need to be
-re-sent from iPhone (10 days of data, re-uploadable from Health Auto
-Export). Pipeline will process and rebuild projections on first ingest.
+**Atmos integration:** karma-atmos skill step 4 now loads projection-micro.md
+automatically at every Atmos session start. First real weather cross-reference
+completed June 10 2026 — instrument data contributed to a filed Atmos event.
 
 **Session paper:** docs/vitals-station-stratigraph-session.md
 "Building Something That Knows How It Became Itself" — June 10 2026.
-Also at ~/mac-shared/stratigraph-papers/.
 
 Key design bets (all holding):
 - Events immutable. Projection is computed state. Never mixed.
 - Wire format drives schema. Documentation is a hint.
-- Consumer-agnostic: projection carries measured values, no interpretation.
+- Consumer-agnostic. The Station records; consumers interpret.
 - Classical code in pipeline. Model reads; does not process.
 - De-dupe key: (metric_name, date_utc_str).
 - 8-day load window keeps runtime flat as history grows.
@@ -60,16 +54,13 @@ Key design bets (all holding):
 
 ## Open Threads
 
-- **Re-upload health data:** send 10 days of exports from iPhone to
-  restart the data layer. Pipeline handles it cleanly.
 - **iPhone daily automation:** configure "since last sync" trigger.
-- **Atmos integration:** load projection-micro.md at session start.
-- **Anomaly floor:** fixed-range minimum bar still deferred.
-- **One-month lookback:** manual trigger for 30-day window, not yet built.
+- **Telegram improvements:** date range in notification, today vitals summary.
+- **30-day lookback projection:** manual trigger, deferred until 60+ days on file.
+- **Anomaly floor:** fixed-range minimum bar deferred.
 
 ## Known Pitfalls
 
-- **git filter-repo deletes gitignored directories** from working dir
-  after rewrite. Always commit .keep files before running. Back up
-  on-disk-only data. See event: 20260610_212119_filter-repo-directory-
-  loss-pitfall.md
+- **git filter-repo deletes gitignored directories** from working dir after
+  rewrite. Always commit .keep files first. See event:
+  20260610_212119_filter-repo-directory-loss-pitfall.md

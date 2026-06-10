@@ -1,7 +1,7 @@
 # NOW — Vitals Station Live Edge
 
-Last updated: 2026-06-10T15:21:19-06:00
-Session: vitals-station bootstrap session (June 10 2026) — FULLY CLOSED
+Last updated: 2026-06-10T15:47:57-06:00
+Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
 
 > Update this file anytime state changes. Commit immediately.
 
@@ -13,29 +13,22 @@ Session: vitals-station bootstrap session (June 10 2026) — FULLY CLOSED
   Check: `systemctl --user status vitals-station`
   Logs:  `journalctl --user -u vitals-station -n 50`
 - Full pipeline: POST → inbox/pending → converter → inbox/processed + events + projections
+- Health data: current — re-uploaded and processed after filter-repo cleanup
 - GitHub: PUBLIC — https://github.com/JeremyIglehart/vitals-station
-- Directory scaffold: inbox/pending/, inbox/processed/, health-data/events/ all present
-  (committed via .keep files — fresh clone is immediately ready)
-- examples/ shows full pipeline with fictional data
-- docs/ has session paper: "Building Something That Knows How It Became Itself"
+- Atmos integration: LIVE — karma-atmos skill step 4 loads projection-micro.md
+  automatically at every Atmos session start
+- First real Atmos weather read using instrument data: filed June 10 2026
+- Session paper in docs/ and ~/mac-shared/stratigraph-papers/
 - Bootstrap genome: https://github.com/JeremyIglehart/stratigraph
-- Git: 27 commits, clean history, all pushed
-
-## Data State
-
-Health data directories exist on disk but are empty — filter-repo
-checkout deleted them during the privacy cleanup pass.
-
-ACTION NEEDED: Re-send 10 days of exports from iPhone to restore the
-data layer. Health Auto Export → any date range → POST to ingest endpoint.
-Pipeline handles overlap/dedup automatically — order doesn't matter.
+- Git: 31 commits (after this one), clean, all pushed
 
 ## How to Use in an Atmos Session
 
-Load current vitals (after re-uploading data):
-  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-micro.md
-  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-meso.md
-  read_file /home/jeremy/projects/stratigraph/vitals-station/health-data/projection-macro.md
+The karma-atmos skill now handles this automatically (step 4).
+Manual load if needed:
+  read_file ~/projects/stratigraph/vitals-station/health-data/projection-micro.md
+  read_file ~/projects/stratigraph/vitals-station/health-data/projection-meso.md
+  read_file ~/projects/stratigraph/vitals-station/health-data/projection-macro.md
 
 ## Daily Automation (to configure on iPhone)
 
@@ -46,22 +39,8 @@ Load current vitals (after re-uploading data):
   iPhone must be on Tailscale when it fires.
   B-Side gets a Telegram ping when processing completes.
 
-## Next Move
-
-Re-send health data from iPhone. Then set up daily automation.
-Then bring projection-micro.md into an Atmos weather report session.
-
 ## Future Work (deferred)
 
-- **Telegram notification improvements:**
-  - Include the date range the export covers (not just when it arrived)
-  - For "today" exports: include baseline vitals summary (resting HR,
-    HRV, blood oxygen, respiratory rate) and activity summary (steps,
-    distance, active energy, sleep) in the notification
-
-- **One-month lookback projection:**
-  - projection-macro-30d.md — 30-day rolling window
-  - Daily totals + trend lines per metric
-  - Triggered manually (not on every ingest — too expensive)
-  - Useful for: baseline calibration, seasonal patterns, Atmos
-    longitudinal cross-reference
+- Telegram: include date range covered + today vitals summary for current-day exports
+- 30-day lookback projection (manual trigger — wait for 60+ days of data)
+- Anomaly floor: fixed-range minimum bar
