@@ -1,21 +1,41 @@
-# Conclusions — [identity pending]
+# Conclusions — Vitals Station
 
-> The living synthesized read. This is what the events *mean*, not just what they were. It starts as nothing but the question. It grows, gets challenged, and stratifies as events accumulate. When a conclusion here is superseded, it moves to `conclusions-archive/` — verbatim, with frontmatter naming what changed and why. Understanding is never overwritten. It is stratified.
+> The living synthesized read. This is what the events *mean*, not just what they were.
+> This layer covers the design of the Vitals Station itself — decisions made, why, and
+> how the understanding of the system evolved. The health data layer lives in health-data/
+> and uses a projection model, not this conclusions model.
 
 ---
 
 ## The Question
 
-*(Arriving. Conception event filed. Recording is live — the idea has not yet been spoken.)*
+What is the right architecture for receiving Apple Health telemetry from an iPhone,
+storing it immutably, and serving it as a clean read model to any consumer — starting
+with Atmos, but agnostic to future applications?
 
 ---
 
 ## Current Read
 
-*(Empty. The system is present, waiting for the first event after conception.)*
+The system is **Vitals Station**: an immutable health event log and projection engine.
+It receives JSON exports from Health Auto Export (iPhone), converts them to a standard
+Markdown event schema, appends them to an event log, and rebuilds a deduplicated
+projection on every ingest. It records. It does not interpret.
+
+Key design bets:
+- Events are immutable. The projection is the mutable read model. These are never mixed.
+- Conclusions (authored meaning) live here. Projections (computed state) live in health-data/.
+- The first ingest is a schema-discovery event — the wire format drives the schema, not docs.
+- Tailscale-only exposure. No public internet surface.
+- Classical code in the ingestion pipeline. The model reads projections; it does not process data.
+
+Atmos is the first consumer. The projection is agnostic to who reads it.
 
 ---
 
 ## Open Threads
 
-*(None yet. The first thread opens when the idea does.)*
+- What does the actual JSON wire format look like? (Arrives with first test export)
+- What metrics will Jeremy have active in his Health Auto Export configuration?
+- What does the projection schema need to look like for Atmos to read it cleanly?
+- Does health-data/ need sub-domains per metric category, or is flat sufficient?
