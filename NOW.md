@@ -19,8 +19,11 @@ Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
 - Telegram notify: B-Side gets a ping on every ingest complete (anomalies included)
 - GitHub: https://github.com/JeremyIglehart/vitals-station (private, up to date)
 - Git: 24 commits, clean history from conception
-- GitHub: health data purged from all history — repo is safe to share
-- examples/ directory added with fictional data showing full pipeline
+- GitHub: health data purged from all history — repo is PUBLIC
+  https://github.com/JeremyIglehart/vitals-station
+- examples/ directory shows full pipeline with fictional data
+- docs/ directory: session paper (MD + PDF) — "Building Something That
+  Knows How It Became Itself" (June 10 2026)
 
 ## Current Projection State (June 10 2026)
 
