@@ -50,3 +50,18 @@ Load current vitals (after re-uploading data):
 
 Re-send health data from iPhone. Then set up daily automation.
 Then bring projection-micro.md into an Atmos weather report session.
+
+## Future Work (deferred)
+
+- **Telegram notification improvements:**
+  - Include the date range the export covers (not just when it arrived)
+  - For "today" exports: include baseline vitals summary (resting HR,
+    HRV, blood oxygen, respiratory rate) and activity summary (steps,
+    distance, active energy, sleep) in the notification
+
+- **One-month lookback projection:**
+  - projection-macro-30d.md — 30-day rolling window
+  - Daily totals + trend lines per metric
+  - Triggered manually (not on every ingest — too expensive)
+  - Useful for: baseline calibration, seasonal patterns, Atmos
+    longitudinal cross-reference
