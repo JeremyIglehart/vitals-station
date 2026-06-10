@@ -1,0 +1,16 @@
+[Unit]
+Description=Vitals Station — health data ingestion server
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/jeremy/projects/stratigraph/vitals-station
+ExecStart=/usr/bin/python3 /home/jeremy/projects/stratigraph/vitals-station/server/server.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
