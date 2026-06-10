@@ -1,42 +1,49 @@
 # Conclusions — Vitals Station
 
-> The living synthesized read. This covers the design of the Vitals Station itself —
-> decisions made, why, and how understanding evolved. The health data layer lives in
-> health-data/ and uses a projection model, not this conclusions model.
+> The living synthesized read. This covers the design of the Vitals Station
+> itself — decisions made, why, and how understanding evolved. Health data
+> state lives in health-data/ and uses a projection model, not this layer.
 
 ---
 
 ## The Question
 
-What is the right architecture for receiving Apple Health telemetry from an iPhone,
-storing it immutably, and serving it as a clean read model to any consumer — starting
-with Atmos, but agnostic to future applications?
+What is the right architecture for receiving Apple Health telemetry from an
+iPhone, storing it immutably, and serving it as a clean read model to any
+consumer — starting with Atmos, but agnostic to future applications?
 
 ---
 
 ## Current Read
 
-The system is **Vitals Station**: an immutable health event log and projection engine.
-It receives JSON exports from Health Auto Export (iPhone), converts them to a standard
-Markdown event schema, appends to an event log, and rebuilds a deduplicated projection
+The system is **Vitals Station**: an immutable health event log and
+projection engine. It receives JSON from Health Auto Export (iPhone),
+stores raw events immutably, and will rebuild a deduplicated projection
 on every ingest. It records. It does not interpret.
 
-**Wire format is now known (not assumed).** Three distinct data-point shapes exist in
-the real export — not one. The converter must handle all three. Sleep analysis and
-heart rate are special cases; the remaining 17 metrics split cleanly between interval
-(Shape A) and point-in-time (Shape D).
+**Infrastructure is stable.** Server runs as a systemd user service on
+karma-01 (Tailscale-only, TLS, port 8080). Survives reboots and session
+restarts independently. Three-file architecture (STRATIGRAPH.md /
+README.md / NOW.md) gives fresh sessions full cold-start orientation
+from a single `read README.md` command.
 
-**High-frequency granulation is the next design problem.** Step count arrives as
-21,000+ data points per day at watch-sample granularity. The projection needs
-aggregation strategy before it can be useful to Atmos. That decision is the next event.
+**Wire format is fully known.** Three distinct data-point shapes exist
+in the real export. The converter must handle all three. Sleep analysis
+and heart rate are special cases. 17 remaining metrics split between
+interval (Shape A: date/start/end/qty/source) and point-in-time
+(Shape D: date/qty/source).
 
-Key design bets (still standing):
+**High-frequency granulation is the next design problem.** Step count
+arrives at 21K+ data points per day. The projection needs aggregation
+strategy before it can be useful. That decision is next.
+
+Key design bets (all standing):
 - Events are immutable. Projection is the mutable read model. Never mixed.
 - Design decisions live here. Computed health state lives in health-data/.
 - Wire format drives schema. Documentation is a hint, not a spec.
-- Tailscale-only exposure. TLS via Let's Encrypt (tailscale cert). No public surface.
-- Classical code in the ingestion pipeline. Model reads projections, does not process data.
-- De-dupe key: (metric_name, date_utc) — collapses overlapping export windows at projection time.
+- Tailscale-only exposure. TLS via Let's Encrypt. No public surface.
+- Classical code in the ingestion pipeline. Model reads; does not process.
+- De-dupe key: (metric_name, date_utc).
 
 Atmos is the first consumer. The projection is agnostic to who reads it.
 
@@ -44,14 +51,12 @@ Atmos is the first consumer. The projection is agnostic to who reads it.
 
 ## Open Threads
 
-- **Aggregation strategy:** Daily summary vs. hourly buckets vs. both? Decide when
-  converter is written. Step count / active energy need summation; heart rate needs
-  avg/min/max; sleep needs stage breakdown.
-- **sleep_analysis `value` field:** Contains HKCategoryValue strings (Apple internal
-  sleep stage names). Need a clean mapping to human-readable stage names.
-- **heart_rate `context` field:** Unknown until inspected. May indicate measurement
-  context (resting, workout, etc.).
-- **startDate/endDate in sleep_analysis:** Appear to duplicate start/end. Confirm
-  before deciding whether to discard or preserve in the event schema.
-- **Projection schema:** What does Atmos actually need to read cleanly? Design this
-  with the first Atmos integration in mind.
+- **Aggregation strategy:** daily summary vs. hourly buckets vs. both?
+  Step count / active energy → sum. Heart rate → avg/min/max. Sleep →
+  stage breakdown. Decides when converter is written.
+- **sleep_analysis `value` field:** HKCategoryValue strings need mapping
+  to human-readable stage names.
+- **heart_rate `context` field:** unknown until raw data inspected.
+- **startDate/endDate in sleep_analysis:** may duplicate start/end.
+  Confirm before schema is written.
+- **Projection schema:** what does Atmos need to read cleanly?
