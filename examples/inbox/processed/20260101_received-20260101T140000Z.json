@@ -1,0 +1,152 @@
+---
+processed_at: 2026-01-01T14:00:00Z
+data_date: 2026-01-01
+received_at: 20260101T140000Z
+event_written: health-data/events/20260101_received-20260101T140000Z.md
+projections_rebuilt: [projection-micro.md, projection-meso.md, projection-macro.md]
+metrics_count: 5
+records_count: 12
+---
+
+{
+  "data": {
+    "metrics": [
+      {
+        "name": "heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-01-01 08:00:00 -0600",
+            "start": "2026-01-01 08:00:00 -0600",
+            "end": "2026-01-01 08:00:30 -0600",
+            "Avg": 62,
+            "Min": 60,
+            "Max": 64,
+            "context": "Sedentary",
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 12:30:00 -0600",
+            "start": "2026-01-01 12:30:00 -0600",
+            "end": "2026-01-01 12:30:30 -0600",
+            "Avg": 88,
+            "Min": 84,
+            "Max": 92,
+            "context": "Active",
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 21:00:00 -0600",
+            "start": "2026-01-01 21:00:00 -0600",
+            "end": "2026-01-01 21:00:30 -0600",
+            "Avg": 58,
+            "Min": 56,
+            "Max": 60,
+            "context": "Sedentary",
+            "source": "Example Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "resting_heart_rate",
+        "units": "count/min",
+        "data": [
+          {
+            "date": "2026-01-01 07:00:00 -0600",
+            "start": "2026-01-01 07:00:00 -0600",
+            "end": "2026-01-01 07:00:00 -0600",
+            "qty": 58,
+            "source": "Example Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "sleep_analysis",
+        "units": "hr",
+        "data": [
+          {
+            "date": "2026-01-01 00:00:00 -0600",
+            "start": "2026-01-01 00:00:00 -0600",
+            "end": "2026-01-01 01:30:00 -0600",
+            "startDate": "2026-01-01 00:00:00 -0600",
+            "endDate": "2026-01-01 01:30:00 -0600",
+            "qty": 1.5,
+            "value": "Core",
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 01:30:00 -0600",
+            "start": "2026-01-01 01:30:00 -0600",
+            "end": "2026-01-01 02:30:00 -0600",
+            "startDate": "2026-01-01 01:30:00 -0600",
+            "endDate": "2026-01-01 02:30:00 -0600",
+            "qty": 1.0,
+            "value": "Deep",
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 02:30:00 -0600",
+            "start": "2026-01-01 02:30:00 -0600",
+            "end": "2026-01-01 04:00:00 -0600",
+            "startDate": "2026-01-01 02:30:00 -0600",
+            "endDate": "2026-01-01 04:00:00 -0600",
+            "qty": 1.5,
+            "value": "REM",
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 04:00:00 -0600",
+            "start": "2026-01-01 04:00:00 -0600",
+            "end": "2026-01-01 06:30:00 -0600",
+            "startDate": "2026-01-01 04:00:00 -0600",
+            "endDate": "2026-01-01 06:30:00 -0600",
+            "qty": 2.5,
+            "value": "Core",
+            "source": "Example Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "step_count",
+        "units": "count",
+        "data": [
+          {
+            "date": "2026-01-01 09:00:00 -0600",
+            "qty": 1200,
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 12:00:00 -0600",
+            "qty": 3400,
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 17:00:00 -0600",
+            "qty": 2800,
+            "source": "Example Apple Watch"
+          }
+        ]
+      },
+      {
+        "name": "blood_oxygen_saturation",
+        "units": "%",
+        "data": [
+          {
+            "date": "2026-01-01 07:00:00 -0600",
+            "start": "2026-01-01 07:00:00 -0600",
+            "end": "2026-01-01 07:00:30 -0600",
+            "qty": 98,
+            "source": "Example Apple Watch"
+          },
+          {
+            "date": "2026-01-01 22:00:00 -0600",
+            "start": "2026-01-01 22:00:00 -0600",
+            "end": "2026-01-01 22:00:30 -0600",
+            "qty": 97,
+            "source": "Example Apple Watch"
+          }
+        ]
+      }
+    ]
+  }
+}
