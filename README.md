@@ -7,6 +7,12 @@ for any consumer. It records. It does not interpret.
 
 First consumer: Karma Atmos weather reports.
 
+Built using the [Stratigraph](https://github.com/JeremyIglehart/stratigraph)
+architecture — an event-driven, markdown-native knowledge system that applies
+event-sourcing not just to facts but to meaning. The design decisions, forks
+considered, and reasoning behind this system live in the genome (STRATIGRAPH.md)
+and event log, not just in the code.
+
 ---
 
 ## Fresh Session Load Order
