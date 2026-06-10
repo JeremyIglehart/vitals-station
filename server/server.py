@@ -15,6 +15,7 @@ Endpoints:
 """
 
 import http.server
+import importlib.util
 import json
 import os
 import ssl
@@ -28,9 +29,20 @@ HOST     = "100.95.70.33"   # Tailscale interface only
 PORT     = 8080
 BASE_DIR = Path(__file__).parent.parent
 RAW_DIR  = BASE_DIR / "test-exports" / "raw"
-CERT_DIR = Path(__file__).parent / "certs"
-CERTFILE = CERT_DIR / "karma-01.tail3cae5f.ts.net.crt"
-KEYFILE  = CERT_DIR / "karma-01.tail3cae5f.ts.net.key"
+CERT_DIR   = Path(__file__).parent / "certs"
+CERTFILE   = CERT_DIR / "karma-01.tail3cae5f.ts.net.crt"
+KEYFILE    = CERT_DIR / "karma-01.tail3cae5f.ts.net.key"
+CONVERTER  = Path(__file__).parent / "converter.py"
+
+def run_converter():
+    """Run converter after each ingest to rebuild all three projections."""
+    try:
+        spec = importlib.util.spec_from_file_location("converter", CONVERTER)
+        mod  = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.run()
+    except Exception as e:
+        print(f"  [warn] converter failed: {e}", flush=True)
 
 RAW_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -95,11 +107,15 @@ class VitalsHandler(http.server.BaseHTTPRequestHandler):
         size = dest.stat().st_size
         print(f"  wrote {filename} ({size} bytes, valid_json={is_valid_json})", flush=True)
 
+        # Rebuild all three projections immediately
+        run_converter()
+
         receipt = {
             "status": "received",
             "file": filename,
             "bytes": size,
             "valid_json": is_valid_json,
+            "projections_rebuilt": True,
         }
         self._send(200, json.dumps(receipt), "application/json")
 
