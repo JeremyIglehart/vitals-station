@@ -15,34 +15,34 @@ consumer — starting with Atmos, but agnostic to future applications?
 
 ## Current Read
 
-**The system is operational.** Vitals Station is a fully running health
-event log and projection engine. It receives JSON from Health Auto Export,
-processes it through a pending→processed pipeline with full provenance
-headers, writes immutable event records, and rebuilds three projections
-on every ingest. It records. It does not interpret.
+**The system is fully operational.** Vitals Station receives Apple Health
+exports from an iPhone, processes them through a pending→processed pipeline,
+writes immutable event records, rebuilds three projections on every ingest,
+and notifies Karma B-Side on Telegram when done. It records. It does not
+interpret.
 
-**Infrastructure:** Systemd user service on karma-01, Tailscale-only TLS,
-port 8080. Survives reboots and session restarts independently. Three-file
-session architecture (STRATIGRAPH.md / README.md / NOW.md) enables cold-start
-from a single read command.
+**Infrastructure:**
+- Systemd user service on karma-01, Tailscale-only TLS, port 8080
+- GitHub private repo: https://github.com/JeremyIglehart/vitals-station
+- Session architecture: STRATIGRAPH.md / README.md / NOW.md
 
-**Pipeline:** inbox/pending → converter → inbox/processed (YAML provenance
-header + original JSON) + health-data/events/ (Markdown event record) +
-three rebuilt projections. Health check: `inbox/pending/` count = 0 means
-current.
+**Pipeline:**
+- inbox/pending → converter → inbox/processed (YAML provenance header + JSON)
+- health-data/events/ (Markdown event record per export)
+- Three projections rebuilt in ~14 seconds
+- Windowed loading: 8 days of files (7-day projection + boundary buffer)
+- Telegram B-Side notification on completion
 
-**Projections — three temporal scales matching Atmos vocabulary:**
+**Projections:**
 - projection-micro.md: Current Read + Today + physiological anomalies
 - projection-meso.md: Yesterday arc + 3-day rolling window
 - projection-macro.md: 7-day rolling window + daily totals
 
-**Anomaly detection:** Physiological signals only (ANOMALY_METRICS whitelist).
-Accumulator metrics excluded — per-second Watch granularity makes statistical
-deviation meaningless on them. One anomaly per minute maximum (most extreme
-value). Threshold: >2σ from day mean.
+**Anomaly detection:** ANOMALY_METRICS whitelist (physiological signals only),
+>2σ from day mean, deduped to one per minute.
 
-**Data:** 10 days live (June 1–10 2026). Three real seam gaps confirmed as
-source recording gaps, not pipeline losses.
+**Data:** 11 exports, 10 days live (June 1–10 2026). Three confirmed seam
+gaps are source recording gaps, not pipeline losses.
 
 Key design bets (all holding):
 - Events immutable. Projection is computed state. Never mixed.
@@ -50,18 +50,20 @@ Key design bets (all holding):
 - Consumer-agnostic: projection carries measured values, no interpretation.
 - Classical code in pipeline. Model reads; does not process.
 - De-dupe key: (metric_name, date_utc_str).
-
-Atmos is the first consumer. Daily automation is ready to configure.
+- 8-day load window keeps runtime flat as history grows.
 
 ---
 
 ## Open Threads
 
+- **iPhone daily automation:** configure "since last sync" → POST to ingest.
+  First real automated export will confirm the full end-to-end loop.
 - **Atmos integration:** load projection-micro.md at start of weather report
-  sessions. First test: does it add useful signal without adding noise?
-- **Anomaly floor:** fixed-range minimum bar still deferred. Revisit after
-  a week of automated daily exports provides a real baseline.
-- **Macro rebuild cadence:** currently rebuilds on every ingest. Fine for now;
-  revisit if large historical exports make it slow.
-- **June 8 HR spike (74 bpm):** resting HR elevated vs baseline 59–69.
-  Worth cross-referencing against Atmos events for that day.
+  sessions. June 8 resting HR spike (74 bpm) is the first cross-reference
+  candidate — pair against Atmos events for that day.
+- **Anomaly floor:** fixed-range minimum bar deferred. Revisit after a week
+  of automated daily exports establishes a real baseline.
+- **Health data in git:** processed JSON exports are committed. If repo
+  visibility or data sensitivity changes, move processed/ to .gitignore.
+- **One-month lookback:** macro window is 7 days. A manual trigger for
+  30-day lookback is a future feature, not yet designed.
