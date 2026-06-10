@@ -1,9 +1,8 @@
 # Conclusions — Vitals Station
 
-> The living synthesized read. This is what the events *mean*, not just what they were.
-> This layer covers the design of the Vitals Station itself — decisions made, why, and
-> how the understanding of the system evolved. The health data layer lives in health-data/
-> and uses a projection model, not this conclusions model.
+> The living synthesized read. This covers the design of the Vitals Station itself —
+> decisions made, why, and how understanding evolved. The health data layer lives in
+> health-data/ and uses a projection model, not this conclusions model.
 
 ---
 
@@ -19,15 +18,25 @@ with Atmos, but agnostic to future applications?
 
 The system is **Vitals Station**: an immutable health event log and projection engine.
 It receives JSON exports from Health Auto Export (iPhone), converts them to a standard
-Markdown event schema, appends them to an event log, and rebuilds a deduplicated
-projection on every ingest. It records. It does not interpret.
+Markdown event schema, appends to an event log, and rebuilds a deduplicated projection
+on every ingest. It records. It does not interpret.
 
-Key design bets:
-- Events are immutable. The projection is the mutable read model. These are never mixed.
-- Conclusions (authored meaning) live here. Projections (computed state) live in health-data/.
-- The first ingest is a schema-discovery event — the wire format drives the schema, not docs.
-- Tailscale-only exposure. No public internet surface.
-- Classical code in the ingestion pipeline. The model reads projections; it does not process data.
+**Wire format is now known (not assumed).** Three distinct data-point shapes exist in
+the real export — not one. The converter must handle all three. Sleep analysis and
+heart rate are special cases; the remaining 17 metrics split cleanly between interval
+(Shape A) and point-in-time (Shape D).
+
+**High-frequency granulation is the next design problem.** Step count arrives as
+21,000+ data points per day at watch-sample granularity. The projection needs
+aggregation strategy before it can be useful to Atmos. That decision is the next event.
+
+Key design bets (still standing):
+- Events are immutable. Projection is the mutable read model. Never mixed.
+- Design decisions live here. Computed health state lives in health-data/.
+- Wire format drives schema. Documentation is a hint, not a spec.
+- Tailscale-only exposure. TLS via Let's Encrypt (tailscale cert). No public surface.
+- Classical code in the ingestion pipeline. Model reads projections, does not process data.
+- De-dupe key: (metric_name, date_utc) — collapses overlapping export windows at projection time.
 
 Atmos is the first consumer. The projection is agnostic to who reads it.
 
@@ -35,7 +44,14 @@ Atmos is the first consumer. The projection is agnostic to who reads it.
 
 ## Open Threads
 
-- What does the actual JSON wire format look like? (Arrives with first test export)
-- What metrics will Jeremy have active in his Health Auto Export configuration?
-- What does the projection schema need to look like for Atmos to read it cleanly?
-- Does health-data/ need sub-domains per metric category, or is flat sufficient?
+- **Aggregation strategy:** Daily summary vs. hourly buckets vs. both? Decide when
+  converter is written. Step count / active energy need summation; heart rate needs
+  avg/min/max; sleep needs stage breakdown.
+- **sleep_analysis `value` field:** Contains HKCategoryValue strings (Apple internal
+  sleep stage names). Need a clean mapping to human-readable stage names.
+- **heart_rate `context` field:** Unknown until inspected. May indicate measurement
+  context (resting, workout, etc.).
+- **startDate/endDate in sleep_analysis:** Appear to duplicate start/end. Confirm
+  before deciding whether to discard or preserve in the event schema.
+- **Projection schema:** What does Atmos actually need to read cleanly? Design this
+  with the first Atmos integration in mind.
