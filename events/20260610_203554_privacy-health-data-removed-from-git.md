@@ -13,6 +13,17 @@ why.
 
 ---
 
+## Addendum (June 10 2026 — same session)
+
+This event was INCOMPLETE at time of writing. test-exports/raw/ was not
+included in the filter-repo path set and remained in git history. See:
+20260610_222858_test-exports-missed-in-filter-repo-purge.md
+
+The repo was not fully clean until that second filter-repo run and
+repo delete+recreate completed.
+
+---
+
 ## What Was Removed From History
 
 All files matching these paths were purged from the full git history

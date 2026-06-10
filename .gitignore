@@ -1,4 +1,5 @@
 # Private health data — never committed
+test-exports/
 inbox/processed/*.json
 inbox/pending/*.json
 health-data/events/*.md
