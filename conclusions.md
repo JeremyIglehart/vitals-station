@@ -15,41 +15,53 @@ consumer — starting with Atmos, but agnostic to future applications?
 
 ## Current Read
 
-The system is **Vitals Station**: an immutable health event log and
-projection engine. It records. It does not interpret.
+**The system is operational.** Vitals Station is a fully running health
+event log and projection engine. It receives JSON from Health Auto Export,
+processes it through a pending→processed pipeline with full provenance
+headers, writes immutable event records, and rebuilds three projections
+on every ingest. It records. It does not interpret.
 
-**Infrastructure is stable.** Systemd user service, TLS, Tailscale-only.
-Three-file session architecture (STRATIGRAPH.md / README.md / NOW.md)
-gives fresh sessions full cold-start orientation.
+**Infrastructure:** Systemd user service on karma-01, Tailscale-only TLS,
+port 8080. Survives reboots and session restarts independently. Three-file
+session architecture (STRATIGRAPH.md / README.md / NOW.md) enables cold-start
+from a single read command.
 
-**Wire format is fully known.** Three data-point shapes. All timestamps
-carry -0600 (MDT). Deterministic parse.
+**Pipeline:** inbox/pending → converter → inbox/processed (YAML provenance
+header + original JSON) + health-data/events/ (Markdown event record) +
+three rebuilt projections. Health check: `inbox/pending/` count = 0 means
+current.
 
-**Projection architecture is decided.** Three files, three temporal scales,
-matching Atmos's own micro/meso/macro vocabulary:
-
-- projection-micro.md: Current Read + Today + today's anomalies (default load)
+**Projections — three temporal scales matching Atmos vocabulary:**
+- projection-micro.md: Current Read + Today + physiological anomalies
 - projection-meso.md: Yesterday arc + 3-day rolling window
-- projection-macro.md: 7-day rolling window + trend direction
+- projection-macro.md: 7-day rolling window + daily totals
 
-Anomaly detection: pure statistical (>2 std dev from day mean). Timestamped,
-value + deviation recorded. No interpretation.
+**Anomaly detection:** Physiological signals only (ANOMALY_METRICS whitelist).
+Accumulator metrics excluded — per-second Watch granularity makes statistical
+deviation meaningless on them. One anomaly per minute maximum (most extreme
+value). Threshold: >2σ from day mean.
 
-Key design bets (all standing):
-- Events immutable. Projections are computed state. Never mixed.
-- Wire format drives schema. Docs are hints.
-- Tailscale-only, TLS, no public surface.
-- Classical code in ingestion pipeline. Model reads; does not process.
-- De-dupe key: (metric_name, date_utc).
-- Consumer-agnostic: projection carries measured values only, no labels.
+**Data:** 10 days live (June 1–10 2026). Three real seam gaps confirmed as
+source recording gaps, not pipeline losses.
+
+Key design bets (all holding):
+- Events immutable. Projection is computed state. Never mixed.
+- Wire format is the spec. Documentation is a hint.
+- Consumer-agnostic: projection carries measured values, no interpretation.
+- Classical code in pipeline. Model reads; does not process.
+- De-dupe key: (metric_name, date_utc_str).
+
+Atmos is the first consumer. Daily automation is ready to configure.
 
 ---
 
 ## Open Threads
 
-- **Converter:** JSON → health-data/events/ + rebuild all three projections.
-  Next build target.
-- **sleep_analysis `value` field:** HKCategoryValue strings → human stage names.
-- **heart_rate `context` field:** unknown until inspected in converter build.
-- **Anomaly floor:** fixed-range minimum bar deferred until first real output.
-- **Macro rebuild cadence:** daily vs. every-ingest — decide when it matters.
+- **Atmos integration:** load projection-micro.md at start of weather report
+  sessions. First test: does it add useful signal without adding noise?
+- **Anomaly floor:** fixed-range minimum bar still deferred. Revisit after
+  a week of automated daily exports provides a real baseline.
+- **Macro rebuild cadence:** currently rebuilds on every ingest. Fine for now;
+  revisit if large historical exports make it slow.
+- **June 8 HR spike (74 bpm):** resting HR elevated vs baseline 59–69.
+  Worth cross-referencing against Atmos events for that day.
