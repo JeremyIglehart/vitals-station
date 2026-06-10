@@ -2,28 +2,31 @@
 """
 Vitals Station — Converter
 --------------------------
-Converts raw JSON exports (test-exports/raw/*.json) into:
-  1. health-data/events/<date>_ingest-<seq>.md  — immutable event per export
-  2. health-data/projection-micro.md            — Current Read + Today + anomalies
-  3. health-data/projection-meso.md             — Yesterday arc + 3-day rolling
-  4. health-data/projection-macro.md            — 7-day rolling window + trends
+Processing pipeline:
 
-Run manually or called by the ingest server after each POST.
+  1. inbox/pending/*.json   → parse, write health-data/events/*.md,
+                               prepend YAML provenance header,
+                               move to inbox/processed/
+  2. inbox/processed/*.json → load all (strips YAML header), dedupe
+  3. Rebuild three projections from unified deduplicated store
+
 No model involvement. Purely deterministic.
 """
 
 import json
-import math
 import statistics
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-BASE     = Path(__file__).parent.parent
-RAW_DIR  = BASE / "test-exports" / "raw"
-EVENT_DIR = BASE / "health-data" / "events"
-PROJ_DIR  = BASE / "health-data"
+BASE_DIR  = Path(__file__).parent.parent
+PENDING   = BASE_DIR / "inbox" / "pending"
+PROCESSED = BASE_DIR / "inbox" / "processed"
+EVENT_DIR = BASE_DIR / "health-data" / "events"
+PROJ_DIR  = BASE_DIR / "health-data"
 
+PENDING.mkdir(parents=True, exist_ok=True)
+PROCESSED.mkdir(parents=True, exist_ok=True)
 EVENT_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -33,7 +36,6 @@ EVENT_DIR.mkdir(parents=True, exist_ok=True)
 def parse_ts(s: str) -> datetime:
     """Parse '2026-06-09 14:31:00 -0600' → aware datetime."""
     s = s.strip()
-    # Format: YYYY-MM-DD HH:MM:SS ±HHMM
     for fmt in ("%Y-%m-%d %H:%M:%S %z", "%Y-%m-%d %H:%M:%S%z"):
         try:
             return datetime.strptime(s, fmt)
@@ -54,24 +56,120 @@ def fmt_hm(hours: float) -> str:
     return f"{h}h {m:02d}m"
 
 # ---------------------------------------------------------------------------
-# Load all raw exports, dedupe, and build a unified metric store
+# Inbox processing — pending → events → processed
+# ---------------------------------------------------------------------------
+
+def _parse_with_frontmatter(path: Path) -> dict:
+    """Read a file that may have YAML frontmatter. Returns parsed JSON."""
+    text = path.read_text(encoding="utf-8")
+    if text.startswith("---"):
+        parts = text.split("---", 2)
+        if len(parts) >= 3:
+            text = parts[2].strip()
+    return json.loads(text)
+
+
+def _ingest_pending() -> list:
+    """
+    For each file in inbox/pending/:
+      - Parse JSON payload
+      - Write health-data/events/<stem>.md (immutable event record)
+      - Prepend YAML provenance header, move to inbox/processed/
+      - Remove from pending
+    Returns list of processed filenames.
+    """
+    done = []
+    for src in sorted(PENDING.glob("*.json")):
+        if src.name == ".keep":
+            continue
+        try:
+            payload = json.loads(src.read_text(encoding="utf-8"))
+        except Exception as e:
+            print(f"  [warn] cannot parse {src.name}: {e}", flush=True)
+            continue
+
+        now_utc    = datetime.now(timezone.utc)
+        metrics    = payload.get("data", {}).get("metrics", [])
+        names      = [m["name"] for m in metrics]
+        rec_count  = sum(len(m.get("data", [])) for m in metrics)
+
+        # data_date from filename prefix e.g. 20260609_received-...
+        stem           = src.stem
+        data_date_raw  = stem.split("_")[0]           # "20260609"
+        data_date_fmt  = (f"{data_date_raw[:4]}-"
+                          f"{data_date_raw[4:6]}-"
+                          f"{data_date_raw[6:]}")      # "2026-06-09"
+
+        received_raw = ""
+        if "received-" in stem:
+            received_raw = stem.split("received-")[1]  # "20260610T182039Z"
+
+        # --- Write event file ---
+        event_name = stem + ".md"
+        event_path = EVENT_DIR / event_name
+        event_path.write_text(
+            f"---\n"
+            f"event_type: health-ingest\n"
+            f"data_date: {data_date_fmt}\n"
+            f"received_at: {now_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
+            f"source_file: inbox/processed/{src.name}\n"
+            f"metrics_count: {len(names)}\n"
+            f"records_count: {rec_count}\n"
+            f"metrics: [{', '.join(names)}]\n"
+            f"---\n\n"
+            f"Raw payload archived at: inbox/processed/{src.name}\n",
+            encoding="utf-8"
+        )
+        print(f"  event: {event_name}", flush=True)
+
+        # --- Move to processed with YAML provenance header prepended ---
+        header = (
+            f"---\n"
+            f"processed_at: {now_utc.strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
+            f"data_date: {data_date_fmt}\n"
+            f"received_at: {received_raw}\n"
+            f"event_written: health-data/events/{event_name}\n"
+            f"projections_rebuilt: [projection-micro.md, projection-meso.md, projection-macro.md]\n"
+            f"metrics_count: {len(names)}\n"
+            f"records_count: {rec_count}\n"
+            f"---\n\n"
+        )
+        dest = PROCESSED / src.name
+        dest.write_text(
+            header + json.dumps(payload, indent=2, ensure_ascii=False),
+            encoding="utf-8"
+        )
+        src.unlink()
+        done.append(src.name)
+        print(f"  processed: {src.name}", flush=True)
+
+    return done
+
+
+# ---------------------------------------------------------------------------
+# Load all processed exports into unified deduplicated store
 # ---------------------------------------------------------------------------
 
 def load_all_exports() -> dict:
     """
-    Returns: {
-      metric_name: [
-        { date_utc, date_local, start_local, end_local, qty, source,
-          extra: {context, value, Avg, Min, Max, ...} }
-      ]
-    }
-    Deduped on (metric_name, date_utc_str).
+    Reads all files from inbox/processed/ (strips YAML header, parses JSON).
+    Also reads any still in inbox/pending/ as fallback.
+    Dedupes on (metric_name, date_utc_str).
+    Returns: { metric_name: [records sorted by date_utc] }
     """
-    seen = set()
+    seen  = set()
     store = defaultdict(list)
 
-    for f in sorted(RAW_DIR.glob("*.json")):
-        data = json.loads(f.read_text())
+    sources = sorted(PROCESSED.glob("*.json")) + sorted(PENDING.glob("*.json"))
+    for f in sources:
+        if f.name == ".keep":
+            continue
+        try:
+            data = _parse_with_frontmatter(f)
+        except Exception as e:
+            print(f"  [warn] skipping {f.name}: {e}", flush=True)
+            continue
+
         for metric in data.get("data", {}).get("metrics", []):
             name = metric["name"]
             for pt in metric.get("data", []):
@@ -83,12 +181,12 @@ def load_all_exports() -> dict:
                 except ValueError:
                     continue
                 dt_utc = to_utc(dt_local)
-                key = (name, dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"))
+                key    = (name, dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ"))
                 if key in seen:
                     continue
                 seen.add(key)
 
-                record = {
+                store[name].append({
                     "date_utc":    dt_utc,
                     "date_local":  dt_local,
                     "start_local": parse_ts(pt["start"]) if "start" in pt else dt_local,
@@ -96,15 +194,14 @@ def load_all_exports() -> dict:
                     "qty":         pt.get("qty"),
                     "source":      pt.get("source", ""),
                     "extra":       {k: v for k, v in pt.items()
-                                    if k not in ("date","start","end","qty","source",
-                                                 "startDate","endDate")},
-                }
-                store[name].append(record)
+                                    if k not in ("date","start","end","qty",
+                                                 "source","startDate","endDate")},
+                })
 
-    # Sort each metric by date_utc
     for name in store:
         store[name].sort(key=lambda r: r["date_utc"])
     return dict(store)
+
 
 # ---------------------------------------------------------------------------
 # Aggregation helpers
@@ -119,10 +216,10 @@ def records_for_day(records: list, day: str) -> list:
 def qty_values(records: list) -> list:
     return [r["qty"] for r in records if r["qty"] is not None]
 
-# Metrics eligible for anomaly detection — physiological signals only.
-# Accumulator metrics (steps, distance, active energy) are excluded:
-# they sample thousands of times/day at near-identical micro-values,
-# making statistical deviation meaningless and producing pure noise.
+# Anomaly detection restricted to physiological signals only.
+# Accumulator metrics (steps, distance, active energy) arrive at per-second
+# granularity with near-identical micro-values — statistical deviation is
+# meaningless on them and produces pure noise.
 ANOMALY_METRICS = {
     "heart_rate", "resting_heart_rate", "heart_rate_variability",
     "blood_oxygen_saturation", "respiratory_rate", "body_temperature",
@@ -130,57 +227,45 @@ ANOMALY_METRICS = {
 }
 
 def detect_anomalies(records: list, day: str) -> list:
-    """Return records >2 std dev from day mean. Physiological signals only.
-    Deduped to one anomaly per minute (most extreme value wins).
-    Requires >=3 points."""
+    """
+    Returns readings >2 std dev from day mean.
+    Physiological signals only. Deduped to one per minute (most extreme wins).
+    Requires >=3 points.
+    """
     day_recs = records_for_day(records, day)
     vals = qty_values(day_recs)
     if len(vals) < 3:
         return []
-    mean = statistics.mean(vals)
+    mean  = statistics.mean(vals)
     stdev = statistics.stdev(vals)
     if stdev == 0:
         return []
-    flagged = [
-        r for r in day_recs
-        if r["qty"] is not None and abs(r["qty"] - mean) > 2 * stdev
-    ]
-    # Dedupe to one per minute — keep the most extreme
+    flagged = [r for r in day_recs
+               if r["qty"] is not None and abs(r["qty"] - mean) > 2 * stdev]
     by_minute = {}
     for r in flagged:
-        minute_key = r["date_local"].strftime("%Y-%m-%d %H:%M")
-        if minute_key not in by_minute:
-            by_minute[minute_key] = r
-        else:
-            existing = by_minute[minute_key]
-            if abs(r["qty"] - mean) > abs(existing["qty"] - mean):
-                by_minute[minute_key] = r
+        key = r["date_local"].strftime("%Y-%m-%d %H:%M")
+        if key not in by_minute or abs(r["qty"]-mean) > abs(by_minute[key]["qty"]-mean):
+            by_minute[key] = r
     return list(by_minute.values())
 
 def sleep_summary(records: list, day: str) -> dict:
-    """Aggregate sleep stages for a day. Returns {stage: hours, total: hours}."""
     stages = defaultdict(float)
     for r in records_for_day(records, day):
         stage = r["extra"].get("value", "Unknown")
         if r["qty"] is not None:
             stages[stage] += r["qty"]
-    total = sum(stages.values())
-    return {"stages": dict(stages), "total": total}
+    return {"stages": dict(stages), "total": sum(stages.values())}
 
 def hr_summary(records: list, day: str) -> dict:
-    """Heart rate summary: resting (Sedentary), active range, HRV."""
-    day_recs = records_for_day(records, day)
+    day_recs  = records_for_day(records, day)
     sedentary = [r for r in day_recs if r["extra"].get("context") == "Sedentary"]
-    all_avgs = [r["extra"].get("Avg") for r in day_recs
-                if r["extra"].get("Avg") is not None]
-    all_mins = [r["extra"].get("Min") for r in day_recs
-                if r["extra"].get("Min") is not None]
-    all_maxs = [r["extra"].get("Max") for r in day_recs
-                if r["extra"].get("Max") is not None]
-    resting_vals = [r["extra"].get("Avg") for r in sedentary
-                    if r["extra"].get("Avg") is not None]
+    all_avgs  = [r["extra"].get("Avg") for r in day_recs if r["extra"].get("Avg") is not None]
+    all_mins  = [r["extra"].get("Min") for r in day_recs if r["extra"].get("Min") is not None]
+    all_maxs  = [r["extra"].get("Max") for r in day_recs if r["extra"].get("Max") is not None]
+    rest_vals = [r["extra"].get("Avg") for r in sedentary if r["extra"].get("Avg") is not None]
     return {
-        "resting_avg": round(statistics.mean(resting_vals), 1) if resting_vals else None,
+        "resting_avg": round(statistics.mean(rest_vals), 1) if rest_vals else None,
         "day_min":     min(all_mins) if all_mins else None,
         "day_max":     max(all_maxs) if all_maxs else None,
         "day_avg":     round(statistics.mean(all_avgs), 1) if all_avgs else None,
@@ -194,20 +279,9 @@ def daily_avg(records: list, day: str) -> float | None:
     vals = qty_values(records_for_day(records, day))
     return round(statistics.mean(vals), 1) if vals else None
 
-def daily_last(records: list, day: str):
-    """Most recent reading for the day."""
-    day_recs = records_for_day(records, day)
-    if not day_recs:
-        return None
-    return day_recs[-1]
-
 def current_read(store: dict) -> dict:
-    """Most recent record per metric across all data."""
-    result = {}
-    for name, records in store.items():
-        if records:
-            result[name] = records[-1]
-    return result
+    return {name: records[-1] for name, records in store.items() if records}
+
 
 # ---------------------------------------------------------------------------
 # Projection builders
@@ -225,10 +299,10 @@ def build_micro(store: dict, today: str, now_local: datetime) -> str:
         "## Current Read  (most recent value per metric)",
         "",
     ]
-
     cr = current_read(store)
     order = [
-        ("heart_rate",             "Heart Rate",        lambda r: f"{r['extra'].get('Avg','?')} bpm  (min {r['extra'].get('Min','?')} / max {r['extra'].get('Max','?')}) [{r['extra'].get('context','?')}]"),
+        ("heart_rate",             "Heart Rate",
+         lambda r: f"{r['extra'].get('Avg','?')} bpm  (min {r['extra'].get('Min','?')} / max {r['extra'].get('Max','?')}) [{r['extra'].get('context','?')}]"),
         ("resting_heart_rate",     "Resting HR",        lambda r: f"{r['qty']} bpm"),
         ("heart_rate_variability", "HRV",               lambda r: f"{round(r['qty'],1)} ms"),
         ("blood_oxygen_saturation","Blood Oxygen",      lambda r: f"{round(r['qty'],1)}%"),
@@ -238,65 +312,52 @@ def build_micro(store: dict, today: str, now_local: datetime) -> str:
         ("walking_running_distance","Distance",         lambda r: f"{round(r['qty'],2)} mi"),
         ("physical_effort",        "Physical Effort",   lambda r: f"{round(r['qty'],2)} kcal/hr·kg"),
     ]
-
     for key, label, fmt in order:
         if key in cr:
-            r = cr[key]
+            r  = cr[key]
             ts = r["date_local"].strftime("%I:%M%p").lstrip("0").lower()
-            try:
-                val = fmt(r)
-            except Exception:
-                val = str(r.get("qty","?"))
+            try:    val = fmt(r)
+            except: val = str(r.get("qty","?"))
             lines.append(f"  {label:<22s} {val}  (as of {ts})")
 
-    # Today summary
     lines += ["", "---", "", f"## Today  ({today}, running)", ""]
 
-    # Sleep — always from most recent sleep, not today's date
     if "sleep_analysis" in store:
-        # find most recent day with sleep data
-        sleep_days = sorted(set(day_str(r["date_local"])
-                                for r in store["sleep_analysis"]), reverse=True)
+        sleep_days = sorted(set(day_str(r["date_local"]) for r in store["sleep_analysis"]), reverse=True)
         if sleep_days:
-            sleep_day = sleep_days[0]
-            s = sleep_summary(store["sleep_analysis"], sleep_day)
+            s = sleep_summary(store["sleep_analysis"], sleep_days[0])
             if s["total"] > 0:
-                stgs = s["stages"]
-                lines.append(f"  Sleep ({sleep_day}):     {fmt_hm(s['total'])} total")
+                lines.append(f"  Sleep ({sleep_days[0]}):     {fmt_hm(s['total'])} total")
                 for stage in ("Deep","REM","Core","Awake"):
-                    if stage in stgs:
-                        lines.append(f"    {stage:<8s} {fmt_hm(stgs[stage])}")
+                    if stage in s["stages"]:
+                        lines.append(f"    {stage:<8s} {fmt_hm(s['stages'][stage])}")
                 lines.append("")
 
-    summable = [
-        ("step_count",             "Steps",          lambda v: f"{int(v):,}"),
-        ("walking_running_distance","Distance",      lambda v: f"{v} mi"),
-        ("active_energy",          "Active Energy",  lambda v: f"{v} kcal"),
-        ("flights_climbed",        "Flights",        lambda v: str(int(v))),
-        ("apple_stand_time",       "Stand Time",     lambda v: f"{int(v)} min"),
-    ]
-    for key, label, fmt in summable:
+    for key, label, fmt in [
+        ("step_count",             "Steps",         lambda v: f"{int(v):,}"),
+        ("walking_running_distance","Distance",     lambda v: f"{v} mi"),
+        ("active_energy",          "Active Energy", lambda v: f"{v} kcal"),
+        ("flights_climbed",        "Flights",       lambda v: str(int(v))),
+        ("apple_stand_time",       "Stand Time",    lambda v: f"{int(v)} min"),
+    ]:
         if key in store:
             val = daily_total(store[key], today)
             if val is not None:
                 lines.append(f"  {label:<22s} {fmt(val)}")
 
-    # Anomalies today — physiological signals only
     anomaly_lines = []
     for name, records in store.items():
         if name not in ANOMALY_METRICS:
             continue
-        anoms = detect_anomalies(records, today)
-        for r in anoms:
-            ts = r["date_local"].strftime("%I:%M%p").lstrip("0").lower()
-            qty = r["qty"]
-            anomaly_lines.append(f"  {name:<35s} {qty}  at {ts}")
-
+        for r in detect_anomalies(records, today):
+            ts  = r["date_local"].strftime("%I:%M%p").lstrip("0").lower()
+            lines_a = f"  {name:<35s} {r['qty']}  at {ts}"
+            anomaly_lines.append(lines_a)
     if anomaly_lines:
         lines += ["", "### Anomalies Today  (>2σ from day mean)", ""]
         lines += anomaly_lines
 
-    lines += [""]
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -309,48 +370,34 @@ def build_meso(store: dict, today: str, yesterday: str, day_before: str) -> str:
         "",
         "---",
     ]
-
     for day, label in [(yesterday, "Yesterday"), (day_before, "Day Before Yesterday")]:
         lines += ["", f"## {label}  ({day})", ""]
-
-        # Sleep
         if "sleep_analysis" in store:
             s = sleep_summary(store["sleep_analysis"], day)
             if s["total"] > 0:
-                stgs = s["stages"]
                 lines.append(f"  Sleep:       {fmt_hm(s['total'])} total")
                 for stage in ("Deep","REM","Core","Awake"):
-                    if stage in stgs:
-                        lines.append(f"    {stage:<8s} {fmt_hm(stgs[stage])}")
+                    if stage in s["stages"]:
+                        lines.append(f"    {stage:<8s} {fmt_hm(s['stages'][stage])}")
                 lines.append("")
-
-        # Heart rate
         if "heart_rate" in store:
             hr = hr_summary(store["heart_rate"], day)
             if hr["day_avg"] is not None:
-                resting = f"Resting avg: {hr['resting_avg']} bpm  |  " if hr["resting_avg"] else ""
-                lines.append(f"  Heart Rate:  {resting}Range: {hr['day_min']}–{hr['day_max']} bpm  |  Avg: {hr['day_avg']} bpm")
-
-        # HRV
+                rest = f"Resting avg: {hr['resting_avg']} bpm  |  " if hr["resting_avg"] else ""
+                lines.append(f"  Heart Rate:  {rest}Range: {hr['day_min']}–{hr['day_max']} bpm  |  Avg: {hr['day_avg']} bpm")
         if "heart_rate_variability" in store:
             val = daily_avg(store["heart_rate_variability"], day)
-            if val:
-                lines.append(f"  HRV:         {val} ms (avg)")
-
-        # Activity
+            if val: lines.append(f"  HRV:         {val} ms (avg)")
         lines.append("")
         for key, label2, fmt in [
-            ("step_count",             "Steps",     lambda v: f"{int(v):,}"),
-            ("walking_running_distance","Distance", lambda v: f"{v} mi"),
-            ("active_energy",          "Active",    lambda v: f"{v} kcal"),
-            ("flights_climbed",        "Flights",   lambda v: str(int(v))),
+            ("step_count",             "Steps",    lambda v: f"{int(v):,}"),
+            ("walking_running_distance","Distance",lambda v: f"{v} mi"),
+            ("active_energy",          "Active",   lambda v: f"{v} kcal"),
+            ("flights_climbed",        "Flights",  lambda v: str(int(v))),
         ]:
             if key in store:
                 val = daily_total(store[key], day)
-                if val is not None:
-                    lines.append(f"  {label2:<14s} {fmt(val)}")
-
-        # Vitals
+                if val is not None: lines.append(f"  {label2:<14s} {fmt(val)}")
         lines.append("")
         for key, label2, fmt in [
             ("blood_oxygen_saturation","Blood O2",  lambda v: f"{v}%"),
@@ -359,33 +406,25 @@ def build_meso(store: dict, today: str, yesterday: str, day_before: str) -> str:
         ]:
             if key in store:
                 val = daily_avg(store[key], day)
-                if val:
-                    lines.append(f"  {label2:<14s} {val}")
-
-        # Anomalies — physiological signals only
+                if val: lines.append(f"  {label2:<14s} {val}")
         anomaly_lines = []
         for name, records in store.items():
             if name not in ANOMALY_METRICS:
                 continue
-            anoms = detect_anomalies(records, day)
-            for r in anoms:
+            for r in detect_anomalies(records, day):
                 ts = r["date_local"].strftime("%H:%M MDT")
-                qty = r["qty"]
-                anomaly_lines.append(f"  {ts}  {name:<35s} {qty}")
-
+                anomaly_lines.append(f"  {ts}  {name:<35s} {r['qty']}")
         if anomaly_lines:
             lines += ["", "### Anomalies  (>2σ from day mean)", ""]
             lines += sorted(anomaly_lines)
-
-    lines += [""]
+    lines.append("")
     return "\n".join(lines)
 
 
 def build_macro(store: dict, today: str) -> str:
     today_dt = datetime.strptime(today, "%Y-%m-%d")
     days = [(today_dt - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(7)]
-    days.reverse()  # oldest first
-
+    days.reverse()
     lines = [
         "# Vitals Station — Macro Projection",
         "",
@@ -399,12 +438,11 @@ def build_macro(store: dict, today: str) -> str:
         f"  {'Date':<12} {'Steps':>8} {'Distance':>10} {'Active':>10} {'Flights':>8}",
         f"  {'-'*12} {'-'*8} {'-'*10} {'-'*10} {'-'*8}",
     ]
-
     for day in days:
-        steps    = daily_total(store.get("step_count",[]), day)
-        dist     = daily_total(store.get("walking_running_distance",[]), day)
-        active   = daily_total(store.get("active_energy",[]), day)
-        flights  = daily_total(store.get("flights_climbed",[]), day)
+        steps   = daily_total(store.get("step_count",[]), day)
+        dist    = daily_total(store.get("walking_running_distance",[]), day)
+        active  = daily_total(store.get("active_energy",[]), day)
+        flights = daily_total(store.get("flights_climbed",[]), day)
         lines.append(
             f"  {day:<12} "
             f"{(str(int(steps))+' ') if steps else '—':>9}"
@@ -412,22 +450,18 @@ def build_macro(store: dict, today: str) -> str:
             f"{(str(active)+' kcal') if active else '—':>11}"
             f"{(str(int(flights))) if flights else '—':>9}"
         )
-
     lines += ["", "## Sleep (total per night)", ""]
     for day in days:
         if "sleep_analysis" in store:
             s = sleep_summary(store["sleep_analysis"], day)
             if s["total"] > 0:
                 lines.append(f"  {day}  {fmt_hm(s['total'])}")
-
     lines += ["", "## Resting Heart Rate", ""]
     for day in days:
         if "resting_heart_rate" in store:
             val = daily_avg(store["resting_heart_rate"], day)
-            if val:
-                lines.append(f"  {day}  {val} bpm")
-
-    lines += [""]
+            if val: lines.append(f"  {day}  {val} bpm")
+    lines.append("")
     return "\n".join(lines)
 
 
@@ -436,28 +470,32 @@ def build_macro(store: dict, today: str) -> str:
 # ---------------------------------------------------------------------------
 
 def run():
+    # Step 1: process pending imports
+    pending = [p for p in PENDING.glob("*.json") if p.name != ".keep"]
+    if pending:
+        print(f"Processing {len(pending)} pending export(s)...", flush=True)
+        _ingest_pending()
+    else:
+        print("No pending exports.", flush=True)
+
+    # Step 2: load all processed data
     print("Loading all exports...", flush=True)
     store = load_all_exports()
     total = sum(len(v) for v in store.values())
     print(f"  {len(store)} metrics, {total} records (deduped)", flush=True)
 
-    now_utc   = datetime.now(timezone.utc)
-    # Use MDT (UTC-6) as local
+    # Step 3: rebuild projections
     mdt       = timezone(timedelta(hours=-6))
-    now_local = now_utc.astimezone(mdt)
+    now_local = datetime.now(timezone.utc).astimezone(mdt)
     today     = day_str(now_local)
     yesterday = day_str(now_local - timedelta(days=1))
     day_before= day_str(now_local - timedelta(days=2))
 
     print(f"  today={today}  yesterday={yesterday}", flush=True)
 
-    micro = build_micro(store, today, now_local)
-    meso  = build_meso(store, today, yesterday, day_before)
-    macro = build_macro(store, today)
-
-    (PROJ_DIR / "projection-micro.md").write_text(micro)
-    (PROJ_DIR / "projection-meso.md").write_text(meso)
-    (PROJ_DIR / "projection-macro.md").write_text(macro)
+    (PROJ_DIR / "projection-micro.md").write_text(build_micro(store, today, now_local))
+    (PROJ_DIR / "projection-meso.md").write_text(build_meso(store, today, yesterday, day_before))
+    (PROJ_DIR / "projection-macro.md").write_text(build_macro(store, today))
 
     print("  wrote projection-micro.md", flush=True)
     print("  wrote projection-meso.md",  flush=True)
