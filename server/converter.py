@@ -20,10 +20,15 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 BASE_DIR  = Path(__file__).parent.parent
-PENDING   = BASE_DIR / "inbox" / "pending"
-PROCESSED = BASE_DIR / "inbox" / "processed"
-EVENT_DIR = BASE_DIR / "health-data" / "events"
-PROJ_DIR  = BASE_DIR / "health-data"
+PENDING    = BASE_DIR / "inbox" / "pending"
+PROCESSED  = BASE_DIR / "inbox" / "processed"
+EVENT_DIR  = BASE_DIR / "health-data" / "events"
+PROJ_DIR   = BASE_DIR / "health-data"
+
+# Load 8 days of files to build a 7-day projection.
+# The extra day catches boundary bleed — exports often carry a few records
+# from the prior day at the seam (e.g. 23:58 on day N appears in day N+1 file).
+LOAD_DAYS  = 8
 
 PENDING.mkdir(parents=True, exist_ok=True)
 PROCESSED.mkdir(parents=True, exist_ok=True)
@@ -150,17 +155,34 @@ def _ingest_pending() -> list:
 # Load all processed exports into unified deduplicated store
 # ---------------------------------------------------------------------------
 
+def _window_files(directory: Path, days: int) -> list:
+    """
+    Return files from directory whose filename date prefix falls within
+    the last `days` days (inclusive of today UTC). Filename format:
+    YYYYMMDD_received-*.json — the date prefix is the data date.
+    """
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y%m%d")
+    files = []
+    for f in sorted(directory.glob("*.json")):
+        if f.name == ".keep":
+            continue
+        date_prefix = f.name[:8]
+        if date_prefix.isdigit() and date_prefix >= cutoff:
+            files.append(f)
+    return files
+
+
 def load_all_exports() -> dict:
     """
-    Reads all files from inbox/processed/ (strips YAML header, parses JSON).
-    Also reads any still in inbox/pending/ as fallback.
+    Reads the last LOAD_DAYS days of files from inbox/processed/.
+    Also reads any still in inbox/pending/ (always include — just arrived).
     Dedupes on (metric_name, date_utc_str).
     Returns: { metric_name: [records sorted by date_utc] }
     """
     seen  = set()
     store = defaultdict(list)
 
-    sources = sorted(PROCESSED.glob("*.json")) + sorted(PENDING.glob("*.json"))
+    sources = _window_files(PROCESSED, LOAD_DAYS) + sorted(PENDING.glob("*.json"))
     for f in sources:
         if f.name == ".keep":
             continue
@@ -469,7 +491,59 @@ def build_macro(store: dict, today: str) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+def _notify_telegram(store: dict, today: str, started: datetime):
+    """Send a concise ingest summary to Karma B-Side via Hermes send_message."""
+    import subprocess, sys, json as _json, statistics as _stats
+
+    elapsed = round((datetime.now(timezone.utc) - started).total_seconds(), 1)
+    total   = sum(len(v) for v in store.values())
+    processed_count = len([f for f in PROCESSED.glob("*.json") if f.name != ".keep"])
+
+    # Anomalies for yesterday (most recent complete day)
+    mdt       = timezone(timedelta(hours=-6))
+    yesterday = day_str(datetime.now(timezone.utc).astimezone(mdt) - timedelta(days=1))
+    anom_lines = []
+    for name, records in store.items():
+        if name not in ANOMALY_METRICS:
+            continue
+        for r in detect_anomalies(records, yesterday):
+            ts  = r["date_local"].strftime("%I:%M%p").lstrip("0").lower()
+            anom_lines.append(f"  {name}: {r['qty']} at {ts}")
+
+    lines = [
+        f"✓ Vitals Station — ingest complete",
+        f"Date: {today}  |  {elapsed}s  |  {total:,} records  |  {processed_count} exports on file",
+    ]
+    if anom_lines:
+        lines.append(f"Anomalies yesterday ({yesterday}):")
+        lines += anom_lines[:5]  # cap at 5 so it doesn't flood
+    else:
+        lines.append(f"No anomalies detected for {yesterday}")
+
+    msg = "\n".join(lines)
+
+    try:
+        hermes_bin = subprocess.run(
+            ["which", "hermes"], capture_output=True, text=True
+        ).stdout.strip() or "/home/jeremy/.local/bin/hermes"
+
+        result = subprocess.run(
+            [hermes_bin, "send",
+             "-t", "telegram:Karma B-Side (group)",
+             msg],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode != 0:
+            print(f"  [warn] telegram notify failed: {result.stderr[:200]}", flush=True)
+        else:
+            print(f"  telegram: notified B-Side", flush=True)
+    except Exception as e:
+        print(f"  [warn] telegram notify error: {e}", flush=True)
+
+
 def run():
+    elapsed_start = datetime.now(timezone.utc)
+
     # Step 1: process pending imports
     pending = [p for p in PENDING.glob("*.json") if p.name != ".keep"]
     if pending:
@@ -501,6 +575,9 @@ def run():
     print("  wrote projection-meso.md",  flush=True)
     print("  wrote projection-macro.md", flush=True)
     print("Done.", flush=True)
+
+    # Telegram notification — send summary to Karma B-Side
+    _notify_telegram(store, today, elapsed_start)
 
 
 if __name__ == "__main__":
