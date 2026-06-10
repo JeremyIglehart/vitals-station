@@ -1,6 +1,6 @@
 # This Is A Stratigraph
 
-You are reading the genome of a Stratigraph¹ — a knowledge system defined by its protocol, not its content. Right now it has no identity. It holds no thinking yet. It knows only how to be a Stratigraph. Everything needed to operate it is in this file. Read it, and proceed.
+You are reading the genome of a Stratigraph¹ — a knowledge system defined by its protocol, not its content. Right now it has no identity. It holds no thinking yet. It knows only how to be a Stratigraph. Everything needed to operate it is in STRATIGRAPH.md. Read it, and proceed.
 
 ---
 
@@ -22,7 +22,7 @@ The aim is **stratigraphic memory, not photographic memory.** Photographic memor
 
 ```
 <this-system>/
-  README.md                    ← the genome (this file)
+  STRATIGRAPH.md               ← the genome (this file)
   conclusions.md               ← current synthesized read — the living meaning
   conclusions-archive/
     <date>_<slug>.md           ← superseded conclusions, verbatim + lineage note
@@ -53,7 +53,7 @@ slug_story: <one line — why the archive slug is what it is>
 
 **4. Archive naming:** `<date>_<slug>.md`. The date is when the conclusion was superseded. The slug captures the spirit of what's being retired — memorable, a little funny, named with affection. Old conclusions aren't failures; they're the strata that held the weight until something better came along.
 
-**5. The genome is a stratum too.** This README is itself a node. When the design changes, log the design-pressure as events and give the version cut its own conclusion — why it changed, what was failing. Logging strain is not the same as cutting a version; you can record pressure several times before deciding to change anything. That gap is readable, and worth reading.
+**5. The genome is a stratum too.** STRATIGRAPH.md is itself a node. When the design changes, log the design-pressure as events and give the version cut its own conclusion — why it changed, what was failing. Logging strain is not the same as cutting a version; you can record pressure several times before deciding to change anything. That gap is readable, and worth reading.
 
 ---
 
@@ -75,4 +75,4 @@ A Stratigraph and the reasoning across it are not two separate systems. They are
 
 ---
 
-> ¹ **Stratigraph** is a named architecture coined by Jeremy Iglehart, June 8, 2026 — discovered while building Karma Atmos. This file is sufficient to operate one. The full concept — etymology, thesis, features, posture (*memento mori for systems*), and the closed-system first principle — lives in `stratigraph.md` alongside this kit, if it travels with it.
+> ¹ **Stratigraph** is a named architecture coined by Jeremy Iglehart, June 8, 2026 — discovered while building Karma Atmos. STRATIGRAPH.md is sufficient to operate one. The full concept — etymology, thesis, features, posture (*memento mori for systems*), and the closed-system first principle — lives in `stratigraph.md` alongside this kit, if it travels with it.
