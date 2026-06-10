@@ -18,7 +18,9 @@ Session: vitals-station bootstrap session (June 10 2026) — COMPLETE
 - Windowed loading: 8 days (7-day projection + 1 day boundary buffer) — ~14s rebuild
 - Telegram notify: B-Side gets a ping on every ingest complete (anomalies included)
 - GitHub: https://github.com/JeremyIglehart/vitals-station (private, up to date)
-- Git: 21 commits, clean history from conception
+- Git: 24 commits, clean history from conception
+- GitHub: health data purged from all history — repo is safe to share
+- examples/ directory added with fictional data showing full pipeline
 
 ## Current Projection State (June 10 2026)
 
