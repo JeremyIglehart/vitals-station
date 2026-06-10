@@ -40,7 +40,11 @@ Three layers — events, conclusions, conclusions-archive — are the whole mach
 
 **2. Conclusions are derived meaning.** `conclusions.md` is the living synthesized read — what the events *mean*, not just what they were. Update it as events accumulate.
 
-**3. Conclusions are versioned, never destroyed.** When a new event challenges the current read, move the old conclusion to `conclusions-archive/` — verbatim — with frontmatter naming what challenged it and what replaced it. Then write the new read into `conclusions.md`.
+**3. Conclusions are versioned, never destroyed.** When a new event challenges the current read:
+  1. **Archive first.** Copy the current `conclusions.md` to `conclusions-archive/<date>_<slug>.md` with frontmatter before touching the live file.
+  2. Then write the new read into `conclusions.md`.
+
+  The order is mandatory. Archive-then-update, never update-then-archive. If the session dies after the archive write but before the update, the old version is safe. If the session dies after the update but before the archive, the old version is gone. Archive first — always.
 
 ```yaml
 ---
